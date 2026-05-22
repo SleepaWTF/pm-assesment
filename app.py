@@ -176,10 +176,20 @@ if st.session_state.step == 0:
     """)
     st.markdown("---")
 
+    name = st.text_input("Твоё имя", placeholder="Например: Дмитрий")
+    email = st.text_input("Рабочая почта", placeholder="example@company.com")
+
     if st.button("🚀 Начать оценку", use_container_width=True):
-        st.session_state.api_key = OPENAI_API_KEY
-        st.session_state.step = 1
-        st.rerun()
+        if not name.strip():
+            st.error("Введи своё имя")
+        elif not email.strip() or "@" not in email:
+            st.error("Введи корректную рабочую почту")
+        else:
+            st.session_state.api_key = OPENAI_API_KEY
+            st.session_state.name = name.strip()
+            st.session_state.email = email.strip()
+            st.session_state.step = 1
+            st.rerun()
 
 # ============================================================
 # ШАГИ 1–8 — ВОПРОСЫ ПО КОМПЕТЕНЦИЯМ
@@ -240,6 +250,40 @@ elif st.session_state.step == total_steps + 1:
 
             prompt = f"""Ты — опытный ментор и эксперт по оценке квалификации Product Manager.
 
+Кандидат: {st.session_state.name} ({st.session_state.email})
+
+Тебе дана матрица компетенций с грейдами от J1 (Стажёр) до S2 (Senior+):
+{matrix_text}
+
+Ниже — ответы кандидата на вопросы по каждой компетенции:
+{answers_text}
+
+Твоя задача — оценить кандидата и вернуть результат СТРОГО в формате JSON (без markdown, без пояснений вокруг):
+
+{{
+  "name": "{st.session_state.name}",
+  "overall_grade": "M2",
+  "overall_summary": "Персональное резюме для {st.session_state.name} — 3–4 предложения. Обращайся по имени. Отметь общий уровень, ключевые сильные стороны и главный фокус роста.",
+  "competencies": [
+    {{
+      "name": "Discovery / Product thinking",
+      "grade": "M2",
+      "score_explanation": "2–3 конкретных наблюдения из ответа кандидата — что именно он сказал и как это соответствует грейду",
+      "strengths": "Конкретные сильные стороны из ответа — не общие слова, а что именно хорошо",
+      "growth_zone": "Конкретный план роста: что именно нужно сделать, какие навыки развить, какие практики внедрить для перехода на следующий грейд"
+    }}
+  ],
+  "development_plan": "Персональный план развития для {st.session_state.name} на 3–6 месяцев. Укажи 3 приоритетных компетенции для роста, конкретные действия по каждой (книги, практики, проекты), и к какому грейду это приведёт."
+}}
+
+Важно:
+- Обращайся к кандидату по имени в summary и development_plan.
+- Будь честен и конкретен. Ссылайся на реальные фразы из ответов.
+- Не завышай грейды. Оценивай строго по матрице.
+- Development plan должен быть практичным и применимым — не общие слова.
+- Возвращай только валидный JSON.
+"""
+
 Тебе дана матрица компетенций с грейдами от J1 (Стажёр) до S2 (Senior+):
 {matrix_text}
 
@@ -289,29 +333,30 @@ elif st.session_state.step == total_steps + 1:
 
     result = st.session_state.result
     st.title("🎯 Результаты оценки")
+    st.markdown(f"### {result.get('name', '')} — грейд: **{result.get('overall_grade', '—')}**")
     st.markdown("---")
 
-    grade = result.get("overall_grade", "—")
-    summary = result.get("overall_summary", "")
-
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        st.metric("Итоговый грейд", grade)
-    with col2:
-        st.markdown(f"**{summary}**")
+    st.markdown("#### 💬 Общее резюме")
+    st.info(result.get("overall_summary", ""))
 
     st.markdown("---")
     st.subheader("📊 По компетенциям")
 
     for comp_result in result.get("competencies", []):
         with st.expander(f"{comp_result['name']} — {comp_result['grade']}", expanded=False):
-            st.markdown(f"**Обоснование грейда:** {comp_result['score_explanation']}")
-            st.markdown(f"✅ **Сильные стороны:** {comp_result['strengths']}")
-            st.markdown(f"🚀 **Зона роста:** {comp_result['growth_zone']}")
+            st.markdown(f"**📌 Обоснование грейда:**\n{comp_result['score_explanation']}")
+            st.markdown(f"**✅ Сильные стороны:**\n{comp_result['strengths']}")
+            st.markdown(f"**🚀 Зона роста:**\n{comp_result['growth_zone']}")
+
+    st.markdown("---")
+    st.subheader("📅 Персональный план развития")
+    st.success(result.get("development_plan", ""))
 
     st.markdown("---")
     if st.button("🔄 Пройти заново", use_container_width=True):
         st.session_state.step = 0
         st.session_state.answers = {}
         st.session_state.result = None
+        st.session_state.name = ""
+        st.session_state.email = ""
         st.rerun()
