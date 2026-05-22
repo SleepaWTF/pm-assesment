@@ -2,8 +2,25 @@ import streamlit as st
 import openai
 import json
 import os
+import gspread
+from google.oauth2.service_account import Credentials
+from datetime import datetime
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+GOOGLE_SHEETS_ID = os.environ.get("GOOGLE_SHEETS_ID", "")
+
+def save_to_sheets(data):
+    try:
+        creds_dict = st.secrets["gcp_service_account"]
+        creds = Credentials.from_service_account_info(
+            creds_dict,
+            scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
+        client = gspread.authorize(creds)
+        sheet = client.open_by_key(GOOGLE_SHEETS_ID).sheet1
+        sheet.append_row(data)
+    except Exception as e:
+        st.warning(f"Не удалось сохранить в таблицу: {e}")
 
 COMPETENCIES = [
     {
@@ -11,6 +28,7 @@ COMPETENCIES = [
         "name": "Discovery / Product thinking",
         "weight": 0.20,
         "question": "Опиши, как ты ведёшь discovery на своём направлении. Приведи конкретный пример: с чего начал, какие методы использовал, как связал с бизнес-целями.",
+        "case_question": "Опиши конкретный кейс из практики: когда это было, какая была задача, что именно ты сделал и каков результат?",
         "levels": {
             "J1": "Знает базовые фреймворки (JTBD, CustDev, Lean Canvas) на уровне определений. Помогает готовить материалы для интервью под руководством.",
             "J2": "Проводит 5+ интервью по готовому гайду. Формулирует гипотезы в формате если-то-потому что.",
@@ -27,6 +45,7 @@ COMPETENCIES = [
         "name": "Data & Analytics",
         "weight": 0.18,
         "question": "Опиши, как ты используешь данные при принятии продуктовых решений. Приведи пример: как ставил гипотезу, какие данные анализировал, к каким выводам пришёл.",
+        "case_question": "Опиши конкретный кейс: какую задачу решал, какие данные использовал, что это дало?",
         "levels": {
             "J1": "Понимает базовые метрики (CR, retention, ARPPU). Использует готовые дашборды. SQL по шаблону.",
             "J2": "Базовый SQL: JOIN, GROUP BY. Строит простые когортные/funnel-отчёты.",
@@ -43,6 +62,7 @@ COMPETENCIES = [
         "name": "Customer understanding",
         "weight": 0.12,
         "question": "Как ты понимаешь своего пользователя? Опиши методы, которые применяешь, как сегментируешь аудиторию и как это влияет на продуктовые решения.",
+        "case_question": "Приведи конкретный пример: когда понимание пользователя помогло принять важное продуктовое решение?",
         "levels": {
             "J1": "Знает 1-2 ключевых сегмента продукта. Читает фидбэк, группирует под руководством.",
             "J2": "Проводит интервью самостоятельно. Базовые персоны и JTBD по 1-2 сегментам.",
@@ -59,6 +79,7 @@ COMPETENCIES = [
         "name": "Prioritization",
         "weight": 0.12,
         "question": "Как ты расставляешь приоритеты в бэклоге? Опиши конкретную ситуацию, когда нужно было выбрать между несколькими задачами при ограниченных ресурсах.",
+        "case_question": "Опиши конкретный кейс: какие задачи конкурировали, как ты принял решение и что в итоге получилось?",
         "levels": {
             "J1": "Знает RICE, MoSCoW, value/effort на уровне определений. Не принимает решений самостоятельно.",
             "J2": "Применяет 1-2 метода приоритизации. Защищает выбор приоритета на конкретной задаче.",
@@ -75,6 +96,7 @@ COMPETENCIES = [
         "name": "Delivery / Execution",
         "weight": 0.10,
         "question": "Опиши, как ты ведёшь фичу или инициативу от идеи до релиза. Как управляешь зависимостями, блокерами и качеством delivery?",
+        "case_question": "Приведи конкретный пример инициативы: что это было, какие были сложности и как ты их решил?",
         "levels": {
             "J1": "Знает ритуалы Scrum/Kanban. Помогает готовить материалы спринта. Не ведёт релизы самостоятельно.",
             "J2": "Ведёт задачи через цикл разработки. Пишет user stories с acceptance criteria.",
@@ -91,6 +113,7 @@ COMPETENCIES = [
         "name": "Stakeholder management",
         "weight": 0.10,
         "question": "Как ты работаешь со стейкхолдерами? Приведи пример, когда нужно было получить buy-in или разрешить конфликт приоритетов.",
+        "case_question": "Опиши конкретную ситуацию со стейкхолдером: кто был вовлечён, в чём была сложность и как ты её разрешил?",
         "levels": {
             "J1": "Знает основных стейкхолдеров. Готовит материалы под контролем. Не ведёт переговоры самостоятельно.",
             "J2": "Ведёт типовые встречи. Эскалирует проблемы вовремя.",
@@ -107,6 +130,7 @@ COMPETENCIES = [
         "name": "Technical understanding",
         "weight": 0.08,
         "question": "Насколько глубоко ты понимаешь техническую сторону продукта? Как взаимодействуешь с инженерами? Приведи пример, где техническое понимание помогло принять лучшее решение.",
+        "case_question": "Приведи конкретный пример: какое техническое решение обсуждалось, как ты участвовал и что это дало продукту?",
         "levels": {
             "J1": "Знает общие термины (API, БД, фронт/бэк). Спрашивает разработчиков для уточнения.",
             "J2": "Понимает базовую архитектуру (клиент-сервер, БД, очереди). Корректно описывает технические требования.",
@@ -123,6 +147,7 @@ COMPETENCIES = [
         "name": "Communication",
         "weight": 0.10,
         "question": "Как ты доносишь продуктовые решения до разных аудиторий (команда, C-level, стейкхолдеры)? Приведи пример сложной коммуникации.",
+        "case_question": "Опиши конкретный случай сложной коммуникации: кому, что и как доносил, и каков был результат?",
         "levels": {
             "J1": "Пишет понятные сообщения. Готовит простые презентации по шаблону.",
             "J2": "Пишет структурированные PRD и one-pagers. Готовит и проводит демо на review.",
@@ -142,6 +167,8 @@ if "step" not in st.session_state:
     st.session_state.step = 0
 if "answers" not in st.session_state:
     st.session_state.answers = {}
+if "cases" not in st.session_state:
+    st.session_state.cases = {}
 if "result" not in st.session_state:
     st.session_state.result = None
 if "name" not in st.session_state:
@@ -187,14 +214,25 @@ elif 1 <= st.session_state.step <= total_steps:
     st.markdown(f"## {comp['name']}")
     st.markdown(f"*Вес в итоговой оценке: {int(comp['weight']*100)}%*")
     st.markdown("---")
-    st.markdown(f"**{comp['question']}**")
 
+    st.markdown(f"**{comp['question']}**")
     answer = st.text_area(
         label="Твой ответ",
-        height=250,
+        height=200,
         placeholder="Пиши развёрнуто, с конкретными примерами из практики...",
         key=f"answer_{comp['id']}",
         value=st.session_state.answers.get(comp['id'], "")
+    )
+
+    st.markdown("---")
+    st.markdown(f"**{comp['case_question']}**")
+    st.caption("Этот ответ не влияет на оценку — он нужен для контекста.")
+    case = st.text_area(
+        label="Конкретный кейс",
+        height=150,
+        placeholder="Когда это было, какая была задача, что сделал, каков результат...",
+        key=f"case_{comp['id']}",
+        value=st.session_state.cases.get(comp['id'], "")
     )
 
     col1, col2 = st.columns([1, 1])
@@ -202,15 +240,17 @@ elif 1 <= st.session_state.step <= total_steps:
         if st.session_state.step > 1:
             if st.button("← Назад", use_container_width=True):
                 st.session_state.answers[comp['id']] = answer
+                st.session_state.cases[comp['id']] = case
                 st.session_state.step -= 1
                 st.rerun()
     with col2:
         btn_label = "Далее →" if st.session_state.step < total_steps else "Получить результат 🎯"
         if st.button(btn_label, use_container_width=True):
-            if not answer or len(answer.strip()) < 30:
-                st.warning("Напиши более развёрнутый ответ — минимум несколько предложений")
+            if not answer or len(answer.strip()) < 200:
+                st.warning("Напиши более развёрнутый ответ — минимум 200 символов")
             else:
                 st.session_state.answers[comp['id']] = answer
+                st.session_state.cases[comp['id']] = case
                 st.session_state.step += 1
                 st.rerun()
 
@@ -236,32 +276,31 @@ elif st.session_state.step == total_steps + 1:
             prompt = (
                 "Ты — опытный ментор и эксперт по оценке квалификации Product Manager.\n\n"
                 f"Кандидат: {name} ({email})\n\n"
-                "Тебе дана матрица компетенций с грейдами от J1 (Стажёр) до S2 (Senior+):\n"
-                + matrix_text +
-                "\n\nНиже - ответы кандидата на вопросы по каждой компетенции:\n"
-                + answers_text +
-                f"\n\nТвоя задача - оценить кандидата и вернуть результат СТРОГО в формате JSON (без markdown, без пояснений вокруг):\n\n"
+                "Матрица компетенций:\n" + matrix_text +
+                "\n\nОтветы кандидата:\n" + answers_text +
+                "\n\nВерни результат СТРОГО в формате JSON без markdown:\n\n"
                 "{\n"
                 f'  "name": "{name}",\n'
                 '  "overall_grade": "M2",\n'
-                f'  "overall_summary": "Персональное резюме для {name} - 3-4 предложения. Обращайся по имени. Отметь общий уровень, ключевые сильные стороны и главный фокус роста.",\n'
+                f'  "overall_summary": "Персональное резюме для {name} - 3-4 предложения с обращением по имени",\n'
                 '  "competencies": [\n'
                 '    {\n'
-                '      "name": "Discovery / Product thinking",\n'
+                '      "name": "название компетенции",\n'
                 '      "grade": "M2",\n'
-                '      "score_explanation": "2-3 конкретных наблюдения из ответа кандидата",\n'
-                '      "strengths": "Конкретные сильные стороны из ответа",\n'
-                '      "growth_zone": "Конкретный план роста для перехода на следующий грейд"\n'
+                '      "score_explanation": "2-3 наблюдения из ответа",\n'
+                '      "strengths": "конкретные сильные стороны",\n'
+                '      "growth_zone": "конкретный план роста до следующего грейда"\n'
                 '    }\n'
                 '  ],\n'
-                f'  "development_plan": "Персональный план развития для {name} на 3-6 месяцев. Укажи 3 приоритетных компетенции для роста, конкретные действия по каждой, и к какому грейду это приведёт."\n'
+                f'  "development_plan": "Персональный план для {name} на 3-6 месяцев: 3 приоритета, конкретные действия, целевой грейд",\n'
+                '  "ai_suspicion_score": 5,\n'
+                '  "ai_suspicion_comment": "Оценка от 1 до 10: насколько текст похож на сгенерированный ИИ. 1 - явно человек, 10 - явно ИИ. Укажи признаки."\n'
                 "}\n\n"
                 "Важно:\n"
-                f"- Обращайся к кандидату по имени ({name}) в summary и development_plan.\n"
-                "- Будь честен и конкретен. Ссылайся на реальные фразы из ответов.\n"
-                "- Не завышай грейды. Оценивай строго по матрице.\n"
-                "- Development plan должен быть практичным — не общие слова.\n"
-                "- Возвращай только валидный JSON."
+                f"- Обращайся по имени ({name})\n"
+                "- Оценивай строго по матрице, не завышай\n"
+                "- ai_suspicion_score и ai_suspicion_comment — только для руководителя, не упоминай их в summary\n"
+                "- Только валидный JSON"
             )
 
             try:
@@ -273,7 +312,28 @@ elif st.session_state.step == total_steps + 1:
                 )
                 raw = response.choices[0].message.content
                 clean = raw.replace("```json", "").replace("```", "").strip()
-                st.session_state.result = json.loads(clean)
+                result = json.loads(clean)
+                st.session_state.result = result
+
+                # Сохраняем в Google Sheets
+                cases_text = ""
+                for comp in COMPETENCIES:
+                    case = st.session_state.cases.get(comp['id'], "")
+                    cases_text += f"{comp['name']}: {case}\n\n"
+
+                row = [
+                    datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    name,
+                    email,
+                    result.get("overall_grade", ""),
+                    result.get("overall_summary", ""),
+                    result.get("development_plan", ""),
+                    cases_text,
+                    result.get("ai_suspicion_score", ""),
+                    result.get("ai_suspicion_comment", ""),
+                ]
+                save_to_sheets(row)
+
             except json.JSONDecodeError:
                 st.error("GPT вернул неожиданный формат. Попробуй ещё раз.")
                 if st.button("🔄 Попробовать снова"):
@@ -309,6 +369,7 @@ elif st.session_state.step == total_steps + 1:
     if st.button("🔄 Пройти заново", use_container_width=True):
         st.session_state.step = 0
         st.session_state.answers = {}
+        st.session_state.cases = {}
         st.session_state.result = None
         st.session_state.name = ""
         st.session_state.email = ""
